@@ -49,9 +49,9 @@ int main(int argc, char *argv[]) {
   free(image);
 }
 
-void stencil(const int nx, const int ny, double *  restrict image, double *  restrict tmp_image) {
-  for (int i = 0; i < nx; ++i) {
-    for (int j = 0; j < ny; ++j) { //Image stored as arrayof Doubles, column by column
+void stencil(const int nx, const int ny, double *  /*restrict*/ image, double *  /*restrict*/ tmp_image) {
+  for (int j = 0; j < ny; ++i) {
+    for (int i = 0; i < nx; ++j) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 3.0/5.0; //Weight current pixel
       if (i > 0)    tmp_image[j+i*ny] += image[j  +(i-1)*ny] * 0.5/5.0; //Left of current pixel
       if (i < nx-1) tmp_image[j+i*ny] += image[j  +(i+1)*ny] * 0.5/5.0; //Right of current pixel
