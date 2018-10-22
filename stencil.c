@@ -6,9 +6,9 @@
 // Define output file name
 #define OUTPUT_FILE "stencil.pgm"
 
-void stencil(const int nx, const int ny, double *  image, double *  tmp_image);
-void init_image(const int nx, const int ny, double *  image, double *  tmp_image);
-void output_image(const char * file_name, const int nx, const int ny, double *image);
+void stencil(const int nx, const int ny, char *  image, char *  tmp_image);
+void init_image(const int nx, const int ny, char *  image, char *  tmp_image);
+void output_image(const char * file_name, const int nx, const int ny, char *image);
 double wtime(void);
 
 int main(int argc, char *argv[]) {
@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
   int niters = atoi(argv[3]);
 
   // Allocate the image
-  double *image = malloc(sizeof(double)*nx*ny);
-  double *tmp_image = malloc(sizeof(double)*nx*ny);
+  char *image = malloc(sizeof(char)*nx*ny);
+  char *tmp_image = malloc(sizeof(char)*nx*ny);
 
   // Set the input image
   init_image(nx, ny, image, tmp_image);
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
   free(image);
 }
 
-void stencil(const int nx, const int ny, double *  /*restrict*/ image, double *  /*restrict*/ tmp_image) {
+void stencil(const int nx, const int ny, char *  /*restrict*/ image, char *  /*restrict*/ tmp_image) {
   for (int j = 0; j < ny; ++j) {
     for (int i = 0; i < nx; ++i) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 0.6; //Weight current pixel
@@ -62,7 +62,7 @@ void stencil(const int nx, const int ny, double *  /*restrict*/ image, double * 
 }
 
 // Create the input image
-void init_image(const int nx, const int ny, double *  image, double *  tmp_image) {
+void init_image(const int nx, const int ny, char *  image, char *  tmp_image) {
   // Zero everything
   for (int j = 0; j < ny; ++j) {
     for (int i = 0; i < nx; ++i) {
@@ -88,7 +88,7 @@ void init_image(const int nx, const int ny, double *  image, double *  tmp_image
 }
 
 // Routine to output the image in Netpbm grayscale binary image format
-void output_image(const char * file_name, const int nx, const int ny, double *image) {
+void output_image(const char * file_name, const int nx, const int ny, char *image) {
 
   // Open output file
   FILE *fp = fopen(file_name, "w");
