@@ -50,8 +50,8 @@ int main(int argc, char *argv[]) {
 }
 
 void stencil(const int nx, const int ny, float *  restrict image, float *  restrict tmp_image) {
-  for (int j = 0; j < ny; ++j) {
-    for (int i = 0; i < nx; ++i) { //Image stored as arrayof Doubles, column by column
+  for (int i = 0; i < nx; ++i) {
+    for (int j = 0; j < ny; ++j) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 0.6f; //Weight current pixel
       if (i > 0)    tmp_image[j+i*ny] += image[j  +(i-1)*ny] * 0.1f; //Left of current pixel
       if (i < nx-1) tmp_image[j+i*ny] += image[j  +(i+1)*ny] * 0.1f; //Right of current pixel
