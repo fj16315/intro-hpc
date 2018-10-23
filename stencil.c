@@ -52,11 +52,11 @@ int main(int argc, char *argv[]) {
 void stencil(const int nx, const int ny, float *  /*restrict*/ image, float *  /*restrict*/ tmp_image) {
   for (int j = 0; j < ny; ++j) {
     for (int i = 0; i < nx; ++i) { //Image stored as arrayof Doubles, column by column
-      tmp_image[j+i*ny] = image[j+i*ny] * 0.6; //Weight current pixel
-      if (i > 0)    tmp_image[j+i*ny] += image[j  +(i-1)*ny] * 0.1; //Left of current pixel
-      if (i < nx-1) tmp_image[j+i*ny] += image[j  +(i+1)*ny] * 0.1; //Right of current pixel
-      if (j > 0)    tmp_image[j+i*ny] += image[j-1+i*ny] * 0.1; //Above current pixel
-      if (j < ny-1) tmp_image[j+i*ny] += image[j+1+i*ny] * 0.1; //Below current pixel
+      tmp_image[j+i*ny] = image[j+i*ny] * 0.6f; //Weight current pixel
+      if (i > 0)    tmp_image[j+i*ny] += image[j  +(i-1)*ny] * 0.1f; //Left of current pixel
+      if (i < nx-1) tmp_image[j+i*ny] += image[j  +(i+1)*ny] * 0.1f; //Right of current pixel
+      if (j > 0)    tmp_image[j+i*ny] += image[j-1+i*ny] * 0.1f; //Above current pixel
+      if (j < ny-1) tmp_image[j+i*ny] += image[j+1+i*ny] * 0.1f; //Below current pixel
     }
   }
 }
@@ -66,8 +66,8 @@ void init_image(const int nx, const int ny, float *  image, float *  tmp_image) 
   // Zero everything
   for (int j = 0; j < ny; ++j) {
     for (int i = 0; i < nx; ++i) {
-      image[j+i*ny] = 0.0;
-      tmp_image[j+i*ny] = 0.0;
+      image[j+i*ny] = 0.0f;
+      tmp_image[j+i*ny] = 0.0f;
       //image[j][i] = 0.0;
       //tmp_image[j][i] = 0.0;
     }
@@ -79,7 +79,7 @@ void init_image(const int nx, const int ny, float *  image, float *  tmp_image) 
       for (int jj = j*ny/8; jj < (j+1)*ny/8; ++jj) {
         for (int ii = i*nx/8; ii < (i+1)*nx/8; ++ii) {
           if ((i+j)%2)
-          image[jj+ii*ny] = 100.0;
+          image[jj+ii*ny] = 100.0f;
           //image[jj][ii] = 100.0;
         }
       }
