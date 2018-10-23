@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
   free(image);
 }
 
-void stencil(const int nx, const int ny, float *  /*restrict*/ image, float *  /*restrict*/ tmp_image) {
+void stencil(const int nx, const int ny, float *  restrict image, float *  restrict tmp_image) {
   for (int j = 0; j < ny; ++j) {
     for (int i = 0; i < nx; ++i) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 0.6f; //Weight current pixel
