@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 }
 
 void stencil(const int nx, const int ny, float *  restrict image, float *  restrict tmp_image) {
-  #pragma omp simd
+  //#pragma omp simd
   for (int i = 1; i < nx-1; i++) {
     tmp_image[i] = image[i] * 0.6f; //Weight current pixel
     tmp_image[i] += (image[i-1] + image[i+1] + image[i+nx]) * 0.1f;
@@ -58,7 +58,7 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
     tmp_image[((ny-1)*nx)+i] += (image[((ny-1)*nx)+i-1] + image[((ny-1)*nx)+i+1] + image[((ny-2)*nx)+i]) * 0.1f;
   }
 
-  #pragma omp simd
+  //#pragma omp simd
   for (int j = 1; j < ny-1; j++) {
     tmp_image[j*ny] = image[j*ny] * 0.6f; //Weight current pixel
     tmp_image[j*ny] += (image[(j-1)*ny] + image[(j+1)*ny] + image[(j*ny)+1]) * 0.1f;
@@ -76,7 +76,7 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
   tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2]) * 0.1f;
 
 
-  #pragma omp simd
+  //#pragma omp simd
   for (int i = 1; i < nx-1; ++i) {
     for (int j = 1; j < ny-1; ++j) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 0.6f; //Weight current pixel
