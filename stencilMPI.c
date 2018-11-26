@@ -8,8 +8,9 @@
 #define OUTPUT_FILE "stencil.pgm"
 #define MASTER 0
 
-void stencil(const int nx, const int ny, float *  image, float *  tmp_image);
-void init_image(const int nx, const int ny, float *  image, float *  tmp_image);
+void stencil(const int nx, const int ny, float *  image, float *  tmp_image, const int rank, const int size);
+void init_image(const int nx, const int ny, float *  image);
+void init_tmp(const int nx, const int ny, float * tmp_image);
 void output_image(const char * file_name, const int nx, const int ny, float *image);
 double wtime(void);
 
@@ -19,6 +20,8 @@ int main(int argc, char *argv[]) {
   int size;               /* size of cohort, i.e. num processes started */
   int flag;               /* for checking whether MPI_Init() has been called */
   enum bool {FALSE,TRUE}; /* enumerated type: false = 0, true = 1 */
+  int tag = 0;           /* scope for adding extra information to a message */
+  MPI_Status status;     /* struct used by MPI_Recv */
 
   MPI_Init(&argc, &argv);
 
@@ -26,6 +29,7 @@ int main(int argc, char *argv[]) {
   if (flag != TRUE) {
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   }
+  flag = FALSE;
 
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -40,59 +44,194 @@ int main(int argc, char *argv[]) {
   // Initiliase problem dimensions from command line arguments
   int nx = atoi(argv[1]);
   int ny = atoi(argv[2]);
-  int portionHeight = ny % size;
+  //printf("ny: %d\n", ny);
+  //printf("size: %d\n", size);
+  int portionHeight = ny / size;
+  //printf("Portion height: %d\n", portionHeight);
   int niters = atoi(argv[3]);
-/*
-  if (rank != MASTER) {
-    // Allocate the image
-    float *image = malloc(sizeof(float)*nx*portionHeight);
-    float *tmp_image = malloc(sizeof(float)*nx*portionHeight);
-    // Set the input image
-    init_image(nx, portionHeight, image, tmp_image);
+  float *image;
+  float *tmp_image;
+  float *imagePortion;
+  //float *tmp_image = malloc(sizeof(float)*nx*(ny-(portionHeight*(size-1))));
+  //float *imagePortion = malloc(sizeof(float)*nx*(ny-(portionHeight*(size-1))));
+  int sendCounts[size];
+  int displacements[size];
+
+  sendCounts[0] = nx*(ny-(portionHeight*(size-1)));
+  displacements[0] = 0;
+  for (int i = 1; i < size; i++){
+    displacements[i] = (nx*(ny-(portionHeight*(size-1))))+((i-1)*nx*portionHeight);
+    sendCounts[i] = nx*portionHeight;
   }
-  else {
-    float *image = malloc(sizeof(float)*nx*(ny-(portionHeight*(size-1))));
-    init_image(nx, ny-(portionHeight*(size-1)), image, tmp_image);
-  }
-*/
-  if (rank == MASTER) {
-    // Allocate the image
-    float *image = malloc(sizeof(float)*nx*ny);
-    float *tmp_image = malloc(sizeof(float)*nx*ny);
-    // Set the input image
-    init_image(nx, ny, image, tmp_image);
-  }
-  output_image(OUTPUT_FILE, nx, ny, image);
-/*
-  // Call the stencil kernel
-  double tic = wtime();
-  for (int t = 0; t < niters; ++t) {
-    stencil(nx, ny, image, tmp_image);
-    stencil(nx, ny, tmp_image, image);
-  }
-  double toc = wtime();
 
   if (rank == MASTER) {
+    // Allocate the image
+    image = malloc(sizeof(float)*nx*ny);
+    tmp_image = malloc(sizeof(float)*nx*(ny-(portionHeight*(size-1))));
+    imagePortion = malloc(sizeof(float)*nx*(ny-(portionHeight*(size-1))));
+    // Set the input image
+    init_image(nx, ny, image);
+    init_tmp(nx, ny-(portionHeight*(size-1)), tmp_image);
+    printf("Master about to scatter\n");
+    //MPI_Scatterv(image, sendCounts, displacements, MPI_FLOAT, imagePortion, nx*portionHeight, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
+    for (int i = 1; i < size; i++) {
+      for (int j = 0; j < nx*portionHeight; j++) {
+        imagePortion[j] = image[(nx*(ny-(portionHeight*(size-1))))+((i-1)*nx*portionHeight)+j];
+      }
+      MPI_Send(imagePortion, nx*portionHeight, MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+    }
+    printf("Master scattered\n");
+    //init_image(nx, ny, image);
+    output_image("masterPortion.pgm", nx, ny-(portionHeight*(size-1)), imagePortion);
+  }
+  else {
+    imagePortion = malloc(sizeof(float)*nx*portionHeight);
+    tmp_image = malloc(sizeof(float)*nx*portionHeight);
+    init_tmp(nx, portionHeight, tmp_image);
+    MPI_Recv(imagePortion, nx*portionHeight, MPI_FLOAT, MASTER, tag, MPI_COMM_WORLD, &status);
+    //printf("Rank %d received its portion!\n", rank);
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
+  double tic = wtime();
+  if (rank == MASTER) {
+    printf("Master running stencil!\n");
+    for (int t = 0; t < niters; ++t) {
+      stencil(nx, ny-(portionHeight*(size-1)), imagePortion, tmp_image, rank, size);
+      stencil(nx, ny-(portionHeight*(size-1)), tmp_image, imagePortion, rank, size);
+    }
+  }
+  else {
+    printf("Rank %d running stencil!\n", rank);
+    for (int t = 0; t < niters; ++t) {
+      stencil(nx, portionHeight, imagePortion, tmp_image, rank, size);
+      stencil(nx, portionHeight, tmp_image, imagePortion, rank, size);
+    }
+  }
+  double toc = wtime();
+  int snedCount;
+  if (rank == MASTER) {
+    snedCount = nx*(ny-(portionHeight*(size-1)));
+  }
+  else {
+    snedCount = nx*portionHeight;
+  }
+
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  if (rank != MASTER) {
+    MPI_Send(imagePortion, nx*portionHeight, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD);
+  }
+
+  if (rank == MASTER) {
+    printf("Before gather\n");
+    //MPI_Gatherv(imagePortion, snedCount, MPI_FLOAT, image, sendCounts, displacements, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
+
+    for (int i = 1; i < size; i++) {
+      MPI_Recv(imagePortion, nx*portionHeight, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &status);
+      for (int j = 0; j < nx*portionHeight; j++) {
+        image[(nx*(ny-(portionHeight*(size-1))))+((i-1)*nx*portionHeight)+j] = imagePortion[j];
+      }
+    }
+
+    printf("After gather\n");
     // Output
     printf("------------------------------------\n");
-    printf(" runtime: %lf s\n", toc-tic);
+    printf(" runtime from rank %d: %lf s\n", rank, toc-tic);
     printf("------------------------------------\n");
 
     output_image(OUTPUT_FILE, nx, ny, image);
     free(image);
   }
+  MPI_Barrier(MPI_COMM_WORLD);
+  //printf("Rank %d finished!\n", rank);
+  MPI_Finalize();
 }
-*/
-void stencil(const int nx, const int ny, float *  restrict image, float *  restrict tmp_image) {
+
+void stencil(const int nx, const int ny, float *  restrict image, float *  restrict tmp_image, const int rank, const int size) {
+  float *currentTopLine = malloc(sizeof(float)*nx);
+  float *currentBottomLine = malloc(sizeof(float)*nx);
+  float *bottomTopLine = malloc(sizeof(float)*nx);
+  float *topBottomLine = malloc(sizeof(float)*nx);
+  MPI_Status status;
+
+  for (int i = 0; i < nx; i++) {
+    currentTopLine[i] = image[i];
+    currentBottomLine[i] = image[((ny-1)*nx)+i];
+  }
+  //printf("Successfully created lines on rank %d!\n", rank);
+
+  if (rank != size-1) {
+    MPI_Send(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD);
+  }
+  if (rank != MASTER) {
+    MPI_Recv(topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &status);
+  }
+
+  if (rank != MASTER) {
+    MPI_Send(currentTopLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD);
+  }
+  if (rank != size-1) {
+    MPI_Recv(bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &status);
+  }
+
   //#pragma omp simd
-  for (int i = 1; i < nx-1; i++) {
+  //Top and bottom lines
+  /*for (int i = 1; i < nx-1; i++) {
     tmp_image[i] = image[i] * 0.6f; //Weight current pixel
     tmp_image[i] += (image[i-1] + image[i+1] + image[i+nx]) * 0.1f;
     tmp_image[((ny-1)*nx)+i] = image[((ny-1)*nx)+i] * 0.6f; //Weight current pixel
     tmp_image[((ny-1)*nx)+i] += (image[((ny-1)*nx)+i-1] + image[((ny-1)*nx)+i+1] + image[((ny-2)*nx)+i]) * 0.1f;
+  }*/
+  //First rank top line and corners
+  if (rank == MASTER) {
+    for (int i = 1; i < nx-1; i++) {
+      tmp_image[i] = image[i] * 0.6f; //Weight current pixel
+      tmp_image[i] += (image[i-1] + image[i+1] + image[i+nx]) * 0.1f;
+    }
+    tmp_image[0] = image[0] * 0.6f;
+    tmp_image[0] += (image[1] + image[nx]) * 0.1f;
+    tmp_image[nx-1] = image[nx-1] * 0.6f;
+    tmp_image[nx-1] += (image[nx-2] + image[(2*nx)-1]) * 0.1f;
+    tmp_image[(ny-1)*nx] = image[(ny-1)*nx] * 0.6f;
+    tmp_image[(ny-1)*nx] += (image[(ny-2)*nx] + image[((ny-1)*nx)+1] + bottomTopLine[0]) * 0.1f;
+    tmp_image[(ny*nx)-1] = image[(ny*nx)-1] * 0.6f;
+    tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2] + bottomTopLine[nx-1]) * 0.1f;
+  }
+  //Last rank bottom line and corners
+  else if (rank == size-1) {
+    for (int i = 1; i < nx-1; i++) {
+      tmp_image[((ny-1)*nx)+i] = image[((ny-1)*nx)+i] * 0.6f; //Weight current pixel
+      tmp_image[((ny-1)*nx)+i] += (image[((ny-1)*nx)+i-1] + image[((ny-1)*nx)+i+1] + image[((ny-2)*nx)+i]) * 0.1f;
+    }
+    tmp_image[0] = image[0] * 0.6f;
+    tmp_image[0] += (image[1] + image[nx] + topBottomLine[0]) * 0.1f;
+    tmp_image[nx-1] = image[nx-1] * 0.6f;
+    tmp_image[nx-1] += (image[nx-2] + image[(2*nx)-1] + topBottomLine[nx-1]) * 0.1f;
+    tmp_image[(ny-1)*nx] = image[(ny-1)*nx] * 0.6f;
+    tmp_image[(ny-1)*nx] += (image[(ny-2)*nx] + image[((ny-1)*nx)+1]) * 0.1f;
+    tmp_image[(ny*nx)-1] = image[(ny*nx)-1] * 0.6f;
+    tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2]) * 0.1f;
+  }
+  //Other ranks top and bottom lines and corners
+  else {
+    for (int i = 1; i < nx-1; i++) {
+      tmp_image[i] = image[i] * 0.6f; //Weight current pixel
+      tmp_image[i] += (image[i-1] + image[i+1] + image[i+nx] + topBottomLine[i]) * 0.1f;
+      tmp_image[((ny-1)*nx)+i] = image[((ny-1)*nx)+i] * 0.6f; //Weight current pixel
+      tmp_image[((ny-1)*nx)+i] += (image[((ny-1)*nx)+i-1] + image[((ny-1)*nx)+i+1] + image[((ny-2)*nx)+i] + bottomTopLine[i]) * 0.1f;
+    }
+    tmp_image[0] = image[0] * 0.6f;
+    tmp_image[0] += (image[1] + image[nx] + topBottomLine[0]) * 0.1f;
+    tmp_image[nx-1] = image[nx-1] * 0.6f;
+    tmp_image[nx-1] += (image[nx-2] + image[(2*nx)-1] + topBottomLine[nx-1]) * 0.1f;
+    tmp_image[(ny-1)*nx] = image[(ny-1)*nx] * 0.6f;
+    tmp_image[(ny-1)*nx] += (image[(ny-2)*nx] + image[((ny-1)*nx)+1] + bottomTopLine[0]) * 0.1f;
+    tmp_image[(ny*nx)-1] = image[(ny*nx)-1] * 0.6f;
+    tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2] + bottomTopLine[nx-1]) * 0.1f;
   }
 
   //#pragma omp simd
+  //Left and rightmost sides
   for (int j = 1; j < ny-1; j++) {
     tmp_image[j*ny] = image[j*ny] * 0.6f; //Weight current pixel
     tmp_image[j*ny] += (image[(j-1)*ny] + image[(j+1)*ny] + image[(j*ny)+1]) * 0.1f;
@@ -100,17 +239,19 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
     tmp_image[((j+1)*ny)-1] += (image[(j*ny)-1] + image[((j+2)*ny)-1] + image[((j+1)*ny)-2]) * 0.1f;
   }
 
-  tmp_image[0] = image[0] * 0.6f;
+  //Corners
+  /*tmp_image[0] = image[0] * 0.6f;
   tmp_image[0] += (image[1] + image[nx]) * 0.1f;
   tmp_image[nx-1] = image[nx-1] * 0.6f;
   tmp_image[nx-1] += (image[nx-2] + image[(2*nx)-1]) * 0.1f;
   tmp_image[(ny-1)*nx] = image[(ny-1)*nx] * 0.6f;
   tmp_image[(ny-1)*nx] += (image[(ny-2)*nx] + image[((ny-1)*nx)+1]) * 0.1f;
   tmp_image[(ny*nx)-1] = image[(ny*nx)-1] * 0.6f;
-  tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2]) * 0.1f;
+  tmp_image[(ny*nx)-1] += (image[((ny-1)*nx)-1] + image[(ny*nx)-2]) * 0.1f;*/
 
 
   //#pragma omp simd
+  //Other pixels
   for (int i = 1; i < nx-1; ++i) {
     for (int j = 1; j < ny-1; ++j) { //Image stored as arrayof Doubles, column by column
       tmp_image[j+i*ny] = image[j+i*ny] * 0.6f; //Weight current pixel
@@ -124,12 +265,12 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
 }
 
 // Create the input image
-void init_image(const int nx, const int ny, float *  image, float *  tmp_image) {
+void init_image(const int nx, const int ny, float *  image) {
   // Zero everything
   for (int i = 0; i < nx; ++i) {
     for (int j = 0; j < ny; ++j) {
       image[0+j+i*ny] = 0.0f;
-      tmp_image[0+j+i*ny] = 0.0f;
+      //tmp_image[0+j+i*ny] = 0.0f;
       //image[j][i] = 0.0;
       //tmp_image[j][i] = 0.0;
     }
@@ -145,6 +286,15 @@ void init_image(const int nx, const int ny, float *  image, float *  tmp_image) 
           //image[jj][ii] = 100.0;
         }
       }
+    }
+  }
+}
+
+void init_tmp(const int nx, const int ny, float * tmp_image) {
+  // Zero everything
+  for (int i = 0; i < nx; ++i) {
+    for (int j = 0; j < ny; ++j) {
+      tmp_image[j+i*ny] = 0.0f;
     }
   }
 }
