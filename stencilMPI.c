@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
   MPI_Barrier(MPI_COMM_WORLD);
   double tic = wtime();
   if (rank == MASTER) {
-    printf("Master running stencil!\n");
+    //printf("Master running stencil!\n");
     for (int t = 0; t < niters; ++t) {
       stencil(nx, masterPortionHeight, imagePortion, tmp_image, rank, size);
       stencil(nx, masterPortionHeight, tmp_image, imagePortion, rank, size);
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
     }*/
   }
   else {
-    printf("Rank %d running stencil!\n", rank);
+    //printf("Rank %d running stencil!\n", rank);
     for (int t = 0; t < niters; ++t) {
       stencil(nx, portionHeight, imagePortion, tmp_image, rank, size);
       stencil(nx, portionHeight, tmp_image, imagePortion, rank, size);
@@ -119,30 +119,39 @@ int main(int argc, char *argv[]) {
     output_image(buf, nx, portionHeight, imagePortion);*/
   }
   double toc = wtime();
+  double finalTime = toc-tic;
 
   MPI_Barrier(MPI_COMM_WORLD);
 
   if (rank != MASTER) {
     MPI_Send(imagePortion, nx*portionHeight, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD);
+    MPI_Send(&finalTime, 1, MPI_DOUBLE, MASTER, 0, MPI_COMM_WORLD);
   }
   else {
+    double maxTime = finalTime;
+    printf("Master ran with time: %lf s\n", finalTime);
     for (int j = 0; j < nx*masterPortionHeight; j++) {
       image[j] = imagePortion[j];
     }
-    printf("Before gather\n");
+    //printf("Before gather\n");
     //MPI_Gatherv(imagePortion, snedCount, MPI_FLOAT, image, sendCounts, displacements, MPI_FLOAT, MASTER, MPI_COMM_WORLD);
 
     for (int i = 1; i < size; i++) {
       MPI_Recv(imagePortion, nx*portionHeight, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &status);
+      MPI_Recv(&finalTime, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD, &status);
+      printf("Rank %d ran with time: %lf s\n", i, finalTime);
+      if (finalTime > maxTime) {
+        maxTime = finalTime;
+      }
       for (int j = 0; j < nx*portionHeight; j++) {
         image[(nx*masterPortionHeight)+((i-1)*nx*portionHeight)+j] = imagePortion[j];
       }
     }
 
-    printf("After gather\n");
+    //printf("After gather\n");
     // Output
     printf("------------------------------------\n");
-    printf(" runtime from rank %d: %lf s\n", rank, toc-tic);
+    printf(" runtime from rank %d: %lf s\n", rank, maxTime);
     printf("------------------------------------\n");
 
     output_image(OUTPUT_FILE, nx, ny, image);
@@ -162,9 +171,21 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
   MPI_Request req;
   int flag = 0;
 
-  for (int i = 0; i < nx; i++) {
-    currentTopLine[i] = image[i];
-    currentBottomLine[i] = image[((ny-1)*nx)+i];
+  if (rank != MASTER && rank != size-1) {
+    for (int i = 0; i < nx; i++) {
+      currentTopLine[i] = image[i];
+      currentBottomLine[i] = image[((ny-1)*nx)+i];
+    }
+  }
+  else if (rank == MASTER) {
+    for (int i = 0; i < nx; i++) {
+      currentBottomLine[i] = image[((ny-1)*nx)+i];
+    }
+  }
+  else {
+    for (int i = 0; i < nx; i++) {
+      currentTopLine[i] = image[i];
+    }
   }
   //printf("Successfully created lines on rank %d!\n", rank);
 
