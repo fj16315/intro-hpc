@@ -159,6 +159,8 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
   float *bottomTopLine = malloc(sizeof(float)*nx);
   float *topBottomLine = malloc(sizeof(float)*nx);
   MPI_Status status;
+  MPI_Request req;
+  int flag = 0;
 
   for (int i = 0; i < nx; i++) {
     currentTopLine[i] = image[i];
@@ -167,18 +169,52 @@ void stencil(const int nx, const int ny, float *  restrict image, float *  restr
   //printf("Successfully created lines on rank %d!\n", rank);
 
   if (rank != size-1) {
-    MPI_Send(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD);
+    MPI_Isend(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &req);
   }
   if (rank != MASTER) {
-    MPI_Recv(topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &status);
+    MPI_Irecv(topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &req);
   }
+  while (!flag) {
+    MPI_Test(&req, &flag, &status);
+  }
+  //printf("Rank %d received bottom line\n", rank);
+  flag = 0;
 
   if (rank != MASTER) {
-    MPI_Send(currentTopLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD);
+    MPI_Isend(currentTopLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &req);
   }
   if (rank != size-1) {
-    MPI_Recv(bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &status);
+    MPI_Irecv(bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &req);
   }
+  while (!flag) {
+    MPI_Test(&req, &flag, &status);
+  }
+  //printf("Rank %d received top line\n", rank);
+  flag = 0;
+
+  /*if (rank == MASTER) {
+    MPI_Send(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD);
+  }
+
+  if (rank != MASTER && rank != size-1) {
+    MPI_Sendrecv(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &status);
+  }
+
+  if (rank == size-1) {
+    MPI_Recv(topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &status);
+    MPI_Send(currentTopLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD);
+  }
+
+  if (rank != MASTER && rank != size-1) {
+    MPI_Sendrecv(currentTopLine, nx, MPI_FLOAT, rank-1, 0, bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &status);
+  }
+
+  if (rank == MASTER) {
+    MPI_Recv(bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &status);
+  }*/
+
+  //MPI_Sendrecv(currentBottomLine, nx, MPI_FLOAT, rank+1, 0, topBottomLine, nx, MPI_FLOAT, rank-1, 0, MPI_COMM_WORLD, &status);
+  //MPI_Sendrecv(currentTopLine, nx, MPI_FLOAT, rank-1, 0, bottomTopLine, nx, MPI_FLOAT, rank+1, 0, MPI_COMM_WORLD, &status);
 
   //#pragma omp simd
   //Top and bottom lines
